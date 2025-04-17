@@ -1,19 +1,27 @@
 from crewai.tools import BaseTool
-from typing import Type
+from typing import Type, Dict, Any
 from pydantic import BaseModel, Field
+import requests
+from bs4 import BeautifulSoup
 
 
-class MyCustomToolInput(BaseModel):
-    """Input schema for MyCustomTool."""
-    argument: str = Field(..., description="Description of the argument.")
+class ScrapeInput(BaseModel):
+    """Input schema for ScrapeWebsiteCustomTool."""
+    url: str = Field(..., description="The URL of the website to scrape.")
 
-class MyCustomTool(BaseTool):
-    name: str = "Name of my tool"
-    description: str = (
-        "Clear description for what this tool is useful for, your agent will need this information to use it."
-    )
-    args_schema: Type[BaseModel] = MyCustomToolInput
 
-    def _run(self, argument: str) -> str:
-        # Implementation goes here
-        return "this is an example of a tool output, ignore it and move along."
+class ScrapeWebsiteCustomTool(BaseTool):
+    name: str = "Scrape Website Tool"
+    description: str = "Scrapes and extracts content from a given website URL."
+    args_schema: Type[BaseModel] = ScrapeInput
+
+    def _run(self, url: str) -> str:
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+
+            soup = BeautifulSoup(response.text, 'html.parser')
+            text = soup.get_text(separator='\n', strip=True)
+            return text[:5000]  # Limit output for LLM context safety
+        except Exception as e:
+            return f"Error scraping {url}: {str(e)}"

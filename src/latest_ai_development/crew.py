@@ -2,10 +2,10 @@ import os
 from crewai_tools import RagTool
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
-
+from src.latest_ai_development.tools.custom_tool import ScrapeWebsiteCustomTool
 
 @CrewBase
-class LatestAiDevelopment():
+class LatestAiDevelopment:
     agents_config = 'config/agents.yaml'
     tasks_config = 'config/tasks.yaml'
 
@@ -31,18 +31,32 @@ class LatestAiDevelopment():
         }
     }
 
-    # Initialize the RAG tool with Ollama config
-    rag_tool = RagTool(config=rag_config, summarize=False)
+    # Initialize the RAG tool with proper configuration
+    @property
+    def rag_tool(self):
+        tool = RagTool(config=self.rag_config, summarize=False)
+
+        # Override the tool's run method to handle the kwargs correctly
+        original_run = tool._run
+
+        def run_with_kwargs(query: str, **raw_kwargs):
+            # Ensure `kwargs` key exists to satisfy RagToolSchema
+            if not raw_kwargs:
+                raw_kwargs = {}
+            return original_run(query=query, kwargs=raw_kwargs)
+
+        tool._run = run_with_kwargs
+        return tool
 
     @agent
     def researcher(self) -> Agent:
         return Agent(
             config=self.agents_config['researcher'],
-            tools=[self.rag_tool],
+            tools=[self.rag_tool, ScrapeWebsiteCustomTool()],  # Ensure correct tool usage
             verbose=True,
-            llm_config={
+            llm_config={ 
                 "provider": "ollama",
-                "model": self.model.replace("ollama/", ""),  # Remove provider prefix if present
+                "model": self.model.replace("ollama/", ""),
                 "base_url": self.api_base
             }
         )
@@ -52,9 +66,9 @@ class LatestAiDevelopment():
         return Agent(
             config=self.agents_config['reporting_analyst'],
             verbose=True,
-            llm_config={
+            llm_config={ 
                 "provider": "ollama",
-                "model": self.model.replace("ollama/", ""),  # Remove provider prefix if present
+                "model": self.model.replace("ollama/", ""),
                 "base_url": self.api_base
             }
         )
@@ -79,9 +93,9 @@ class LatestAiDevelopment():
             tasks=self.tasks,
             process=Process.sequential,
             verbose=True,
-            llm_config={
+            llm_config={ 
                 "provider": "ollama",
-                "model": self.model.replace("ollama/", ""),  # Remove provider prefix if present
+                "model": self.model.replace("ollama/", ""),
                 "base_url": self.api_base
             }
         )
