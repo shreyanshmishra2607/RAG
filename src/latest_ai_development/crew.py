@@ -1,26 +1,44 @@
+import os
+from crewai_tools import RagTool
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 
-# If you want to run a snippet of code before or after the crew starts,
-# you can use the @before_kickoff and @after_kickoff decorators
-# https://docs.crewai.com/concepts/crews#example-crew-class-with-decorators
 
 @CrewBase
 class LatestAiDevelopment():
-    """LatestAiDevelopment crew"""
-
-    # Learn more about YAML configuration files here:
-    # Agents: https://docs.crewai.com/concepts/agents#yaml-configuration-recommended
-    # Tasks: https://docs.crewai.com/concepts/tasks#yaml-configuration-recommended
     agents_config = 'config/agents.yaml'
     tasks_config = 'config/tasks.yaml'
 
-    # If you would like to add tools to your agents, you can learn more about it here:
-    # https://docs.crewai.com/concepts/agents#agent-tools
+    # Load model config from environment with correct model names
+    model = os.getenv("MODEL", "llama3.1")  # Use exactly the model name that works with Ollama
+    api_base = os.getenv("API_BASE", "http://localhost:11434")
+
+    # Custom configuration to remove OpenAI usage
+    rag_config = {
+        "llm": {
+            "provider": "ollama",
+            "config": {
+                "model": model,
+                "base_url": api_base
+            }
+        },
+        "embedding_model": {
+            "provider": "ollama",
+            "config": {
+                "model": "nomic-embed-text",  # This model is available on your system
+                "base_url": api_base
+            }
+        }
+    }
+
+    # Initialize the RAG tool with Ollama config
+    rag_tool = RagTool(config=rag_config, summarize=False)
+
     @agent
     def researcher(self) -> Agent:
         return Agent(
             config=self.agents_config['researcher'],
+            tools=[self.rag_tool],
             verbose=True
         )
 
@@ -31,9 +49,6 @@ class LatestAiDevelopment():
             verbose=True
         )
 
-    # To learn more about structured task outputs,
-    # task dependencies, and task callbacks, check out the documentation:
-    # https://docs.crewai.com/concepts/tasks#overview-of-a-task
     @task
     def research_task(self) -> Task:
         return Task(
@@ -49,14 +64,9 @@ class LatestAiDevelopment():
 
     @crew
     def crew(self) -> Crew:
-        """Creates the LatestAiDevelopment crew"""
-        # To learn how to add knowledge sources to your crew, check out the documentation:
-        # https://docs.crewai.com/concepts/knowledge#what-is-knowledge
-
         return Crew(
-            agents=self.agents, # Automatically created by the @agent decorator
-            tasks=self.tasks, # Automatically created by the @task decorator
+            agents=self.agents,
+            tasks=self.tasks,
             process=Process.sequential,
             verbose=True,
-            # process=Process.hierarchical, # In case you wanna use that instead https://docs.crewai.com/how-to/Hierarchical/
         )
