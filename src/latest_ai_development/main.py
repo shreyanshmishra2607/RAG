@@ -17,8 +17,12 @@ def run():
     # Initialize the crew instance
     crew_instance = LatestAiDevelopment()
 
-    # ✅ No need to add to rag_tool here — that's done inside crew.py via config
-    crew_instance.crew().kickoff(inputs=inputs)
+    try:
+        # Run the crew with proper error handling
+        crew_instance.crew().kickoff(inputs=inputs)
+    except Exception as e:
+        print(f"Error occurred: {e}")
+        print("Please check that Ollama is running at http://localhost:11434 and has the required models.")
 
 if __name__ == "__main__":
     run()

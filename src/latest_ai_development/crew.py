@@ -9,23 +9,23 @@ class LatestAiDevelopment():
     agents_config = 'config/agents.yaml'
     tasks_config = 'config/tasks.yaml'
 
-    # Load model config from environment with correct model names
-    model = os.getenv("MODEL", "llama3.1")  # Use exactly the model name that works with Ollama
+    # Load model config from environment with correct provider format
+    model = os.getenv("MODEL", "ollama/llama3.1")  # Correctly formatted with provider
     api_base = os.getenv("API_BASE", "http://localhost:11434")
 
-    # Custom configuration to remove OpenAI usage
+    # Custom configuration with explicit provider information
     rag_config = {
         "llm": {
             "provider": "ollama",
             "config": {
-                "model": model,
+                "model": "llama3.1",  # Provider is explicit in config
                 "base_url": api_base
             }
         },
         "embedding_model": {
             "provider": "ollama",
             "config": {
-                "model": "nomic-embed-text",  # This model is available on your system
+                "model": "nomic-embed-text",
                 "base_url": api_base
             }
         }
@@ -39,14 +39,24 @@ class LatestAiDevelopment():
         return Agent(
             config=self.agents_config['researcher'],
             tools=[self.rag_tool],
-            verbose=True
+            verbose=True,
+            llm_config={
+                "provider": "ollama",
+                "model": self.model.replace("ollama/", ""),  # Remove provider prefix if present
+                "base_url": self.api_base
+            }
         )
 
     @agent
     def reporting_analyst(self) -> Agent:
         return Agent(
             config=self.agents_config['reporting_analyst'],
-            verbose=True
+            verbose=True,
+            llm_config={
+                "provider": "ollama",
+                "model": self.model.replace("ollama/", ""),  # Remove provider prefix if present
+                "base_url": self.api_base
+            }
         )
 
     @task
@@ -69,4 +79,9 @@ class LatestAiDevelopment():
             tasks=self.tasks,
             process=Process.sequential,
             verbose=True,
+            llm_config={
+                "provider": "ollama",
+                "model": self.model.replace("ollama/", ""),  # Remove provider prefix if present
+                "base_url": self.api_base
+            }
         )
