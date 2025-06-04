@@ -303,6 +303,24 @@ def main():
     print(f"Classification result: {label}")
 
     if label in ["static", "real-time", "code", "math"]:
+        # Try direct computation for math queries
+        if label == "math":
+            try:
+                # Clean the query to extract just the mathematical expression
+                math_expr = user_input.lower()
+                math_expr = math_expr.replace("what is", "").replace("calculate", "").replace("compute", "")
+                math_expr = math_expr.replace("×", "*").replace("÷", "/").strip()
+                
+                # Simple safety check - only allow basic math operations
+                allowed_chars = set("0123456789+-*/.()\s")
+                if all(c in allowed_chars for c in math_expr):
+                    result = eval(math_expr)
+                    print(f"🧮 Direct calculation: {math_expr} = {result}")
+                else:
+                    print("🧮 Complex math expression, searching for context...")
+            except:
+                print("🧮 Could not compute directly, searching for context...")
+        
         # Get dynamic docs from web search
         print("🔍 Searching the web...")
         web_texts = search_web(user_input)
