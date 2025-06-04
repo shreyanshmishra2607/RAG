@@ -132,7 +132,7 @@ def search_web_serpapi(query, max_results=5):
         print(f"❌ SerpAPI error: {e}")
         return [], []
     
-    
+
 # 3. Modify search_web function to handle URLs
 def search_web(query, max_results=5):
     print(f"\n🔍 Starting web search for: '{query}'")
@@ -292,27 +292,127 @@ def vector_search(query, k=3):
 
 # 7. Answer Generation
 def generate_answer(query, context, source_urls):
-    """Generate answer using LLM with retrieved context and include sources"""
+    """Generate detailed, structured answer using LLM with retrieved context"""
     if not context or not context.strip():
         return "I couldn't find relevant information to answer your question. Please try rephrasing or ask about a different topic."
         
-    prompt = f"""Answer the question using the context below. Be concise, helpful, and accurate.
+    # Enhanced prompt for detailed responses
+    prompt = f"""You are a knowledgeable AI assistant. Answer the user's question using the provided context in a detailed, well-structured manner.
 
-Context:
+Context Information:
 {context}
 
-Question: {query}
+User Question: {query}
 
-Instructions:
-- Use only information from the context above
-- Be specific and factual
-- If the context doesn't fully answer the question, say so
-- Keep the answer concise but complete
+Instructions for your response:
+1. Provide a comprehensive answer using ONLY the information from the context above
+2. Structure your response clearly with:
+   - A brief introduction/overview
+   - Main points organized with bullet points or numbered lists when appropriate
+   - Specific details and examples from the context
+   - A conclusion or summary if relevant
+3. Use markdown formatting for better readability:
+   - **Bold** for important terms and headings
+   - *Italics* for emphasis
+   - Bullet points (•) or numbered lists for key information
+   - Line breaks for better organization
+4. If the context doesn't fully answer the question, clearly state what information is available and what might be missing
+5. Be specific and cite relevant details from the context
+6. Maintain a professional, informative tone
+7. Aim for 200-500 words depending on the complexity of the question
 
-Answer:"""
+Your detailed response:"""
     
     try:
-        print("✨ Generating answer with LLM...")
+        print("✨ Generating detailed answer with LLM...")
+        res = requests.post(f"{OLLAMA_HOST}/api/generate", json={
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.7,  # Add some creativity while maintaining accuracy
+                "top_k": 40,
+                "top_p": 0.9,
+                "num_predict": 1000  # Allow longer responses
+            }
+        }, timeout=OLLAMA_TIMEOUT * 2)  # Double timeout for longer responses
+        
+        if res.status_code == 200:
+            answer = res.json()["response"].strip()
+            
+            # Post-process the answer for better formatting
+            answer = format_response(answer)
+            
+            # Add sources section
+            if source_urls:
+                answer += "\n\n---\n\n**📚 Sources:**"
+                for i, url in enumerate(source_urls[:5], 1):
+                    # Try to extract domain name for cleaner display
+                    try:
+                        from urllib.parse import urlparse
+                        domain = urlparse(url).netloc
+                        answer += f"\n{i}. [{domain}]({url})"
+                    except:
+                        answer += f"\n{i}. {url}"
+            
+            print("✅ Detailed answer generated successfully")
+            return answer
+        else:
+            return f"Error generating answer: HTTP {res.status_code}"
+            
+    except Exception as e:
+        return f"Error generating answer: {e}"
+
+def format_response(text):
+    """Post-process the response for better formatting"""
+    lines = text.split('\n')
+    formatted_lines = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            formatted_lines.append('')
+            continue
+            
+        # Convert simple lists to proper markdown
+        if line.startswith('- ') or line.startswith('* '):
+            formatted_lines.append(f"• {line[2:]}")
+        elif line.startswith(tuple(f"{i}." for i in range(1, 10))):
+            formatted_lines.append(line)
+        else:
+            formatted_lines.append(line)
+    
+    return '\n'.join(formatted_lines)
+
+# Enhanced query classification for better response types
+def classify_query_detailed(query):
+    """Enhanced query classification to determine response style"""
+    cleaned = clean_text(query)
+    prompt = f"""
+Classify the user query to determine the best response approach. Reply with ONE label:
+
+- "explanation" - User wants detailed explanation of concepts, processes, or topics
+- "comparison" - User wants to compare multiple things  
+- "step-by-step" - User wants instructions or procedures
+- "factual" - User wants specific facts, numbers, or data points
+- "analysis" - User wants analysis, pros/cons, or evaluation
+- "summary" - User wants overview or summary of topic
+- "troubleshooting" - User has a problem to solve
+- "news" - User wants current events or recent news
+- "definition" - User wants to understand what something means
+
+Examples:
+- "explain machine learning" → explanation
+- "how to bake a cake" → step-by-step  
+- "what happened in the news today" → news
+- "compare iPhone vs Samsung" → comparison
+- "what is blockchain" → definition
+- "analyze pros and cons of remote work" → analysis
+
+Query: "{query}"
+Classification:"""
+    
+    try:
         res = requests.post(f"{OLLAMA_HOST}/api/generate", json={
             "model": OLLAMA_MODEL,
             "prompt": prompt,
@@ -320,22 +420,162 @@ Answer:"""
         }, timeout=OLLAMA_TIMEOUT)
         
         if res.status_code == 200:
+            classification = res.json()["response"].strip().lower()
+            valid_types = ["explanation", "comparison", "step-by-step", "factual", 
+                          "analysis", "summary", "troubleshooting", "news", "definition"]
+            
+            for query_type in valid_types:
+                if query_type in classification:
+                    print(f"✅ Query type: {query_type}")
+                    return query_type
+            
+            return "explanation"  # Default fallback
+        else:
+            return "explanation"
+    except Exception as e:
+        print(f"❌ Classification error: {e}")
+        return "explanation"
+
+def generate_structured_answer(query, context, source_urls, query_type="explanation"):
+    """Generate answer based on query type for optimal structure"""
+    if not context or not context.strip():
+        return "I couldn't find relevant information to answer your question. Please try rephrasing or ask about a different topic."
+    
+    # Different prompt templates based on query type
+    prompts = {
+        "explanation": f"""Provide a comprehensive explanation of the topic using the context below.
+
+Context: {context}
+
+Question: {query}
+
+Structure your explanation as:
+**Overview:** Brief introduction to the topic
+
+**Key Concepts:**
+• Main concept 1: Detailed explanation
+• Main concept 2: Detailed explanation  
+• Main concept 3: Detailed explanation
+
+**Important Details:**
+Include specific information, examples, and relevant details from the context.
+
+**Summary:** 
+Conclude with key takeaways or implications.
+
+Your detailed explanation:""",
+
+        "step-by-step": f"""Provide step-by-step instructions or process explanation using the context below.
+
+Context: {context}
+
+Question: {query}
+
+Format your response as:
+**Overview:** What this process accomplishes
+
+**Steps:**
+1. **Step 1:** Detailed description
+2. **Step 2:** Detailed description  
+3. **Step 3:** Detailed description
+(Continue as needed)
+
+**Important Notes:**
+• Key considerations or warnings
+• Tips for success
+• Common mistakes to avoid
+
+Your step-by-step guide:""",
+
+        "comparison": f"""Compare the items mentioned in the question using the context below.
+
+Context: {context}
+
+Question: {query}
+
+Structure your comparison as:
+**Overview:** Brief introduction to what's being compared
+
+**Key Differences:**
+| Aspect | Option A | Option B |
+|--------|----------|----------|
+| Feature 1 | Details | Details |
+| Feature 2 | Details | Details |
+
+**Similarities:**
+• Common feature 1
+• Common feature 2
+
+**Conclusion:** Which might be better and when
+
+Your detailed comparison:""",
+
+        "analysis": f"""Provide a thorough analysis using the context below.
+
+Context: {context}
+
+Question: {query}
+
+Structure your analysis as:
+**Background:** Context and current situation
+
+**Key Factors:**
+• **Factor 1:** Analysis and implications
+• **Factor 2:** Analysis and implications
+• **Factor 3:** Analysis and implications
+
+**Pros and Cons:**
+**Advantages:**
+• Pro 1: Explanation
+• Pro 2: Explanation
+
+**Disadvantages:**
+• Con 1: Explanation  
+• Con 2: Explanation
+
+**Conclusion:** Overall assessment and recommendations
+
+Your detailed analysis:"""
+    }
+    
+    # Use appropriate prompt or fallback to explanation
+    selected_prompt = prompts.get(query_type, prompts["explanation"])
+    
+    try:
+        print(f"✨ Generating {query_type} response...")
+        res = requests.post(f"{OLLAMA_HOST}/api/generate", json={
+            "model": OLLAMA_MODEL,
+            "prompt": selected_prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.7,
+                "top_k": 40,
+                "top_p": 0.9,
+                "num_predict": 1500  # Allow even longer responses
+            }
+        }, timeout=OLLAMA_TIMEOUT * 3)  # Triple timeout for complex responses
+        
+        if res.status_code == 200:
             answer = res.json()["response"].strip()
             
-            # Add sources to the answer
+            # Add sources section
             if source_urls:
-                answer += "\n\n📚 **Sources:**"
-                for i, url in enumerate(source_urls[:5], 1):  # Limit to top 5 sources
-                    answer += f"\n{i}. {url}"
+                answer += "\n\n---\n\n**📚 Sources & References:**"
+                for i, url in enumerate(source_urls[:5], 1):
+                    try:
+                        from urllib.parse import urlparse
+                        domain = urlparse(url).netloc
+                        answer += f"\n{i}. [{domain}]({url})"
+                    except:
+                        answer += f"\n{i}. {url}"
             
-            print("✅ Answer generated successfully")
+            print("✅ Structured answer generated successfully")
             return answer
         else:
             return f"Error generating answer: HTTP {res.status_code}"
             
     except Exception as e:
-        return f"Error generating answer: {e}"
-# 8. Math Query Handler
+        return f"Error generating answer: {e}"# 8. Math Query Handler
 def handle_math_query(query):
     """Handle direct mathematical calculations"""
     try:
@@ -363,51 +603,56 @@ def handle_math_query(query):
 
 # 9. Main Processing Function
 def process_query(user_input):
-    """Main function to process user queries - Modified to handle URLs"""
+    """Enhanced main function to process user queries with detailed responses"""
     print(f"\n{'='*60}")
     print(f"🚀 Processing query: '{user_input}'")
     print(f"{'='*60}")
 
-    # ... existing classification code ...
+    # Classify query type for optimal response structure
+    query_type = classify_query_detailed(user_input)
+    
+    # Handle math queries directly
+    if "math" in user_input.lower() or any(op in user_input for op in ['+', '-', '*', '/', '=', 'calculate', 'compute']):
+        math_result = handle_math_query(user_input)
+        if math_result:
+            return math_result
 
     # Search the web for current information
-    web_texts, web_links = search_web(user_input)  # Modified
+    web_texts, web_links = search_web(user_input)
     
     if not web_texts:
-        return ("I couldn't find current information about your query...")
+        return "I couldn't find current information about your query. Please try rephrasing or ask about a different topic."
 
     # Process and chunk the web content
     print(f"\n📝 Processing {len(web_texts)} web results...")
     all_chunks = []
-    chunk_links = []  # Track which link each chunk came from
+    chunk_links = []
     
     for i, (text, link) in enumerate(zip(web_texts, web_links)):
         if text.strip():
             cleaned = clean_text(text)
             if cleaned:
-                chunks = chunk_text(text)
+                chunks = chunk_text(text, max_words=150)  # Slightly larger chunks for more context
                 all_chunks.extend(chunks)
-                # Each chunk gets the same source URL
                 chunk_links.extend([link] * len(chunks))
                 print(f"   Text {i+1}: Generated {len(chunks)} chunks")
 
     if not all_chunks:
-        return "I found some web results but couldn't process them properly..."
+        return "I found some web results but couldn't process them properly. Please try a different query."
 
     # Ingest into vector store with URLs
-    if not ingest_chunks(all_chunks, chunk_links):  # Modified
-        return "There was an error processing the information..."
+    if not ingest_chunks(all_chunks, chunk_links):
+        return "There was an error processing the information. Please try again."
 
-    # Retrieve relevant context with URLs
-    context, source_urls = vector_search(user_input, k=5)  # Modified
+    # Retrieve more relevant context for detailed responses
+    context, source_urls = vector_search(user_input, k=8)  # Get more chunks for detailed responses
     
     if not context:
-        return "I couldn't find relevant information in the search results..."
+        return "I couldn't find relevant information in the search results. Please try rephrasing your query."
 
-    # Generate final answer with sources
-    answer = generate_answer(user_input, context, source_urls)  # Modified
+    # Generate structured answer based on query type
+    answer = generate_structured_answer(user_input, context, source_urls, query_type)
     return answer
-
 # 10. Main Driver Function
 def main():
     """Main interactive loop"""
