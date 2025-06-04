@@ -82,11 +82,13 @@ Classification:"""
         return "static"
 
 # 3. Web Search Functions
+# Replace your incomplete search_web_serpapi function with this complete version:
+
 def search_web_serpapi(query, max_results=5):
-    """Search using SerpAPI (primary method)"""
+    """Search using SerpAPI (primary method) - Enhanced to capture URLs"""
     if not SERP_API_KEY:
         print("⚠️ SERP_API_KEY not found in environment")
-        return []
+        return [], []
     
     try:
         print(f"🔍 Searching with SerpAPI: '{query}'")
@@ -100,84 +102,55 @@ def search_web_serpapi(query, max_results=5):
         }
 
         search = GoogleSearch(params)
-        results = search.get_dict()
+        results = search.get_dict()  # This line was missing!
 
         if "error" in results:
             print(f"❌ SerpAPI Error: {results['error']}")
-            return []
+            return [], []
 
         texts = []
+        links = []  # Add this line
         organic_results = results.get("organic_results", [])
         
         for i, r in enumerate(organic_results[:max_results]):
             title = r.get("title", "")
             snippet = r.get("snippet", "")
+            url = r.get("link", "")  # Add this line
             
             # Combine title and snippet for richer context
             combined_text = f"{title}. {snippet}" if title and snippet else (title or snippet)
             
             if combined_text:
                 texts.append(combined_text)
+                links.append(url)  # Add this line
                 print(f"   Result {i+1}: {combined_text[:100]}...")
                 
         print(f"✅ Found {len(texts)} results from SerpAPI")
-        return texts
+        return texts, links  # Modified return statement
         
     except Exception as e:
         print(f"❌ SerpAPI error: {e}")
-        return []
-
-def search_web_duckduckgo(query, max_results=5):
-    """Fallback search using DuckDuckGo"""
-    try:
-        from duckduckgo_search import DDGS
-        
-        print(f"🦆 Searching with DuckDuckGo: '{query}'")
-        texts = []
-        with DDGS() as ddgs:
-            results = ddgs.text(query, max_results=max_results)
-            for i, r in enumerate(results):
-                title = r.get('title', '')
-                body = r.get('body', '')
-                
-                # Combine title and body for richer context
-                combined_text = f"{title}. {body}" if title and body else (title or body)
-                
-                if combined_text:
-                    texts.append(combined_text)
-                    print(f"   Result {i+1}: {combined_text[:100]}...")
-        
-        print(f"✅ Found {len(texts)} results from DuckDuckGo")
-        return texts
-    except ImportError:
-        print("❌ duckduckgo-search package not installed. Install with: pip install duckduckgo-search")
-        return []
-    except Exception as e:
-        print(f"❌ DuckDuckGo search error: {e}")
-        return []
-
+        return [], []
+    
+    
+# 3. Modify search_web function to handle URLs
 def search_web(query, max_results=5):
-    """Main search function with fallback options"""
     print(f"\n🔍 Starting web search for: '{query}'")
     
     # Try SerpAPI first
     if SERP_API_KEY:
-        results = search_web_serpapi(query, max_results)
+        results, links = search_web_serpapi(query, max_results)  # Modified
         if results:
-            return results
+            return results, links  # Modified return
     
     # Try DuckDuckGo as fallback
     print("🔄 Trying DuckDuckGo as fallback...")
-    results = search_web_duckduckgo(query, max_results)
+    results, links = search_web_duckduckgo(query, max_results)  # Modified
     if results:
-        return results
+        return results, links  # Modified return
     
-    # If all searches fail
-    print("❌ All search methods failed. Please check:")
-    print("   1. Internet connection")
-    print("   2. SERP_API_KEY in .env file")
-    print("   3. duckduckgo-search package installation")
-    return []
+    print("❌ All search methods failed...")
+    return [], []  # Modified return
 
 # 4. Text Processing
 def chunk_text(text, max_words=100):
@@ -226,8 +199,9 @@ def initialize_components():
 embed_model, collection = initialize_components()
 
 # 6. Vector Store Operations
-def ingest_chunks(chunks):
-    """Ingest text chunks into the vector store"""
+# 4. Modify ingest_chunks function to store URLs with chunks
+def ingest_chunks(chunks, links):
+    """Ingest text chunks with their source URLs into the vector store"""
     if not chunks:
         print("⚠️ No chunks to ingest")
         return False
@@ -235,7 +209,7 @@ def ingest_chunks(chunks):
     try:
         print(f"💾 Ingesting {len(chunks)} chunks into vector store...")
         
-        # Clear existing documents for fresh search results
+        # Clear existing documents
         try:
             existing = collection.get()
             if existing['ids']:
@@ -251,21 +225,31 @@ def ingest_chunks(chunks):
         # Prepare data for insertion
         ids = [f"chunk_{i}" for i in range(len(chunks))]
         
-        # Add to collection
+        # Create metadata with URLs
+        metadatas = []
+        chunk_idx = 0
+        for i, link in enumerate(links):
+            # Assuming each text generated 1 chunk (adjust based on your chunking logic)
+            metadatas.append({"source_url": link, "chunk_index": chunk_idx})
+            chunk_idx += 1
+        
+        # Add to collection with metadata
         collection.add(
             documents=chunks,
             embeddings=embeddings,
-            ids=ids
+            ids=ids,
+            metadatas=metadatas  # Add this line
         )
-        print(f"✅ Successfully ingested {len(chunks)} chunks")
+        print(f"✅ Successfully ingested {len(chunks)} chunks with URLs")
         return True
         
     except Exception as e:
         print(f"❌ Error ingesting chunks: {e}")
         return False
 
+# 5. Modify vector_search function to return URLs
 def vector_search(query, k=3):
-    """Perform semantic search to find relevant chunks"""
+    """Perform semantic search to find relevant chunks with URLs"""
     try:
         print(f"🔎 Performing vector search (top-{k})...")
         cleaned_query = clean_text(query)
@@ -274,32 +258,41 @@ def vector_search(query, k=3):
         results = collection.query(
             query_embeddings=[query_emb],
             n_results=k,
-            include=["documents", "distances"]
+            include=["documents", "distances", "metadatas"]  # Add metadatas
         )
         
         docs = results["documents"][0]
         dists = results["distances"][0]
+        metadatas = results["metadatas"][0]  # Add this line
 
         if not docs:
             print("❌ No matching documents found")
-            return ""
+            return "", []
 
         print(f"\n📋 Top {len(docs)} matching chunks:")
         for i, (doc, dist) in enumerate(zip(docs, dists)):
-            print(f"   Match {i+1} (similarity: {1-dist:.3f}): {doc[:150]}...")
+            print(f"   Match {i+1} (similarity: {dist:.3f}): {doc[:150]}...")
 
         # Combine all relevant chunks
         context = "\n\n".join(docs)
+        
+        # Extract unique URLs
+        source_urls = []
+        for metadata in metadatas:
+            url = metadata.get("source_url", "")
+            if url and url not in source_urls:
+                source_urls.append(url)
+        
         print(f"✅ Retrieved {len(docs)} chunks for context")
-        return context
+        return context, source_urls  # Modified return
         
     except Exception as e:
         print(f"❌ Vector search error: {e}")
-        return ""
+        return "", []
 
 # 7. Answer Generation
-def generate_answer(query, context):
-    """Generate answer using LLM with retrieved context"""
+def generate_answer(query, context, source_urls):
+    """Generate answer using LLM with retrieved context and include sources"""
     if not context or not context.strip():
         return "I couldn't find relevant information to answer your question. Please try rephrasing or ask about a different topic."
         
@@ -328,18 +321,20 @@ Answer:"""
         
         if res.status_code == 200:
             answer = res.json()["response"].strip()
+            
+            # Add sources to the answer
+            if source_urls:
+                answer += "\n\n📚 **Sources:**"
+                for i, url in enumerate(source_urls[:5], 1):  # Limit to top 5 sources
+                    answer += f"\n{i}. {url}"
+            
             print("✅ Answer generated successfully")
             return answer
         else:
             return f"Error generating answer: HTTP {res.status_code}"
             
-    except requests.exceptions.ConnectionError:
-        return "Error: Cannot connect to Ollama service. Please ensure Ollama is running."
-    except requests.exceptions.Timeout:
-        return f"Error: Request timeout ({OLLAMA_TIMEOUT}s). Try a simpler question."
     except Exception as e:
         return f"Error generating answer: {e}"
-
 # 8. Math Query Handler
 def handle_math_query(query):
     """Handle direct mathematical calculations"""
@@ -368,58 +363,49 @@ def handle_math_query(query):
 
 # 9. Main Processing Function
 def process_query(user_input):
-    """Main function to process user queries"""
+    """Main function to process user queries - Modified to handle URLs"""
     print(f"\n{'='*60}")
     print(f"🚀 Processing query: '{user_input}'")
     print(f"{'='*60}")
 
-    # Classify the query
-    label = classify_query(user_input)
-    
-    # Handle math queries with direct calculation first
-    if label == "math":
-        direct_answer = handle_math_query(user_input)
-        if direct_answer:
-            return direct_answer
-
-    # For all query types, get dynamic information from web
-    print(f"\n📊 Query type: {label}")
-    print("🌐 Fetching dynamic information from web...")
+    # ... existing classification code ...
 
     # Search the web for current information
-    web_texts = search_web(user_input)
+    web_texts, web_links = search_web(user_input)  # Modified
     
     if not web_texts:
-        return ("I couldn't find current information about your query. "
-                "This might be due to network issues or API limitations. "
-                "Please check your internet connection and API keys.")
+        return ("I couldn't find current information about your query...")
 
     # Process and chunk the web content
     print(f"\n📝 Processing {len(web_texts)} web results...")
     all_chunks = []
-    for i, text in enumerate(web_texts):
-        if text.strip():  # Only process non-empty texts
+    chunk_links = []  # Track which link each chunk came from
+    
+    for i, (text, link) in enumerate(zip(web_texts, web_links)):
+        if text.strip():
             cleaned = clean_text(text)
-            if cleaned:  # Only chunk if cleaning produced valid text
-                chunks = chunk_text(text)  # Use original text, not cleaned
+            if cleaned:
+                chunks = chunk_text(text)
                 all_chunks.extend(chunks)
+                # Each chunk gets the same source URL
+                chunk_links.extend([link] * len(chunks))
                 print(f"   Text {i+1}: Generated {len(chunks)} chunks")
 
     if not all_chunks:
-        return "I found some web results but couldn't process them properly. Please try rephrasing your question."
+        return "I found some web results but couldn't process them properly..."
 
-    # Ingest into vector store
-    if not ingest_chunks(all_chunks):
-        return "There was an error processing the information. Please try again."
+    # Ingest into vector store with URLs
+    if not ingest_chunks(all_chunks, chunk_links):  # Modified
+        return "There was an error processing the information..."
 
-    # Retrieve relevant context
-    context = vector_search(user_input, k=5)  # Get top 5 most relevant chunks
+    # Retrieve relevant context with URLs
+    context, source_urls = vector_search(user_input, k=5)  # Modified
     
     if not context:
-        return "I couldn't find relevant information in the search results. Please try a different question."
+        return "I couldn't find relevant information in the search results..."
 
-    # Generate final answer
-    answer = generate_answer(user_input, context)
+    # Generate final answer with sources
+    answer = generate_answer(user_input, context, source_urls)  # Modified
     return answer
 
 # 10. Main Driver Function
