@@ -1,0 +1,90 @@
+┌─────────────────────────────────────────────────────────────────┐
+│                    USER INPUT PROCESSING                        │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              CONVERSATIONAL DETECTION                           │
+│  • Pattern matching for greetings, casual chat                 │
+│  • Returns direct response if conversational                    │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │ (If NOT conversational)
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                QUERY CLASSIFICATION                             │
+│  • Classify into: real-time, static, code, math, etc.          │
+│  • Determine response type: explanation, comparison, etc.       │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  MATH DETECTION                                 │
+│  • Direct calculation for simple math expressions              │
+│  • Uses eval() for basic arithmetic                            │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │ (If NOT math)
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   WEB SEARCH                                    │
+│  • SerpAPI (Google Search) integration                         │
+│  • Retrieves top-k results with titles & snippets              │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│               TEXT PROCESSING                                   │
+│  • Clean and normalize retrieved text                          │
+│  • Chunk text into manageable pieces (100-150 words)           │
+│  • Maintain source URL associations                            │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              VECTOR STORAGE                                     │
+│  • Generate embeddings using SentenceTransformer               │
+│  • Store in ChromaDB with metadata                             │
+│  • Clear previous documents to avoid duplicates                │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│             SEMANTIC SEARCH                                     │
+│  • Convert user query to embedding                             │
+│  • Find top-k most similar chunks                              │
+│  • Retrieve relevant context + source URLs                     │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│          STRUCTURED ANSWER GENERATION                          │
+│  • Use Ollama LLM with context                                 │
+│  • Apply response-type specific templates                      │
+│  • Include source citations                                     │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                 FINAL RESPONSE                                  │
+│  • Formatted answer with sources                               │
+│  • Return to user                                              │
+└─────────────────────────────────────────────────────────────────┘
+
+
+Modern Architecture Assessment: ✅ FOLLOWS MODERN PATTERNS
+This RAG system incorporates several modern architectural principles:
+Modern Components:
+
+Hybrid Retrieval: Combines web search + vector similarity
+Query Routing: Smart classification to avoid unnecessary searches
+Multi-modal Processing: Handles different query types appropriately
+Persistent Vector Store: ChromaDB for efficient similarity search
+Structured Generation: Template-based responses for different use cases
+Source Attribution: Proper citation and URL tracking
+
+Advanced Features:
+
+Conversational Intelligence: Distinguishes between chat and information queries
+Response Type Classification: Tailors output format to query intent
+Real-time Data Integration: SerpAPI for current information
+Chunking Strategy: Optimized text segmentation
+Error Handling: Comprehensive exception management
